@@ -3,6 +3,7 @@
 
 Provides:
 - DeepSeek evaluator model for cost-effective LLM evaluation
+- Gemini evaluator model as alternative (set DEEPEVAL_EVALUATOR=gemini)
 - Shared test fixtures for evaluation scenarios
 - Common test data and expected outputs
 """
@@ -58,15 +59,92 @@ class DeepSeekEvaluator(DeepEvalBaseLLM):
         return self.model_name
 
 
+class GeminiEvaluator(DeepEvalBaseLLM):
+    """Custom evaluator using Google Gemini for LLM evaluation.
+
+    Uses the google-generativeai SDK directly. Set GEMINI_API_KEY or
+    GOOGLE_API_KEY in your environment to use this evaluator.
+
+    Activate by setting DEEPEVAL_EVALUATOR=gemini in .env.
+    """
+
+    def __init__(self):
+        self.model_name = "gemini-2.0-flash"
+        self._model = None
+
+    def load_model(self) -> Any:
+        """Lazy load the Gemini client."""
+        if self._model is None:
+            import google.generativeai as genai
+            api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
+            if not api_key:
+                raise ValueError(
+                    "Gemini evaluator requires GEMINI_API_KEY or GOOGLE_API_KEY"
+                )
+            genai.configure(api_key=api_key)
+            self._model = genai.GenerativeModel(
+                self.model_name,
+                generation_config=genai.types.GenerationConfig(temperature=0.0),
+            )
+        return self._model
+
+    def generate(self, prompt: str) -> str:
+        """Generate evaluation response from Gemini."""
+        model = self.load_model()
+        response = model.generate_content(prompt)
+        return response.text or ""
+
+    async def a_generate(self, prompt: str) -> str:
+        """Async generation for async test cases."""
+        return self.generate(prompt)
+
+    def get_model_name(self) -> str:
+        """Return model name for DeepEval metrics."""
+        return self.model_name
+
+
+def _select_evaluator() -> DeepEvalBaseLLM:
+    """Select evaluator based on DEEPEVAL_EVALUATOR env var.
+
+    Supported values: 'deepseek' (default), 'gemini'.
+    Falls back to whichever API key is available.
+    """
+    evaluator = os.getenv("DEEPEVAL_EVALUATOR", "deepseek").lower()
+
+    if evaluator == "gemini":
+        api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
+        if api_key:
+            return GeminiEvaluator()
+        # Fall back to DeepSeek if no Gemini key
+        if os.getenv("DEEPSEEK_API_KEY"):
+            return DeepSeekEvaluator()
+        raise ValueError("No API key found for Gemini or DeepSeek evaluator")
+
+    # Default: DeepSeek
+    if os.getenv("DEEPSEEK_API_KEY"):
+        return DeepSeekEvaluator()
+    # Fall back to Gemini if no DeepSeek key
+    api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
+    if api_key:
+        return GeminiEvaluator()
+    raise ValueError("No API key found for DeepSeek or Gemini evaluator")
+
+
 @pytest.fixture
 def deepeval_model():
     """Provide configured DeepEval model for tests.
+
+    Selects evaluator based on DEEPEVAL_EVALUATOR env var:
+    - 'deepseek' (default): Uses DeepSeek API
+    - 'gemini': Uses Google Gemini API
+
+    Falls back to whichever API key is available.
 
     Usage:
         def test_something(deepeval_model):
             metric = AnswerRelevancyMetric(model=deepeval_model)
     """
-    return DeepSeekEvaluator()
+    return _select_evaluator()
 
 
 @pytest.fixture

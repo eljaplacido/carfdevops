@@ -66,6 +66,10 @@ class EvaluationConfig(BaseModel):
     enabled: bool = Field(True, description="Whether evaluation is enabled")
     relevancy_threshold: float = Field(0.7, ge=0.0, le=1.0)
     hallucination_threshold: float = Field(0.3, ge=0.0, le=1.0)
+    evaluator: str = Field(
+        default_factory=lambda: os.getenv("DEEPEVAL_EVALUATOR", "deepseek"),
+        description="Evaluator provider: 'deepseek' or 'gemini'"
+    )
     model_name: str = Field("deepseek-reasoner")
     api_base_url: str = Field("https://api.deepseek.com")
     timeout_seconds: int = Field(30, ge=1)
@@ -109,6 +113,76 @@ class EvaluationService:
             )
             return False
 
+    def _create_deepseek_evaluator(self, base_cls: type) -> Any:
+        """Create a DeepSeek-backed evaluator."""
+        from openai import OpenAI
+        config = self.config
+
+        class DeepSeekEvaluator(base_cls):
+            def __init__(self):
+                self._client = None
+                self.model_name = config.model_name
+
+            def load_model(self):
+                if self._client is None:
+                    self._client = OpenAI(
+                        api_key=os.getenv("DEEPSEEK_API_KEY"),
+                        base_url=config.api_base_url,
+                    )
+                return self._client
+
+            def generate(self, prompt: str) -> str:
+                client = self.load_model()
+                response = client.chat.completions.create(
+                    model=config.model_name,
+                    messages=[{"role": "user", "content": prompt}],
+                    temperature=0.0,
+                )
+                return response.choices[0].message.content or ""
+
+            async def a_generate(self, prompt: str) -> str:
+                return self.generate(prompt)
+
+            def get_model_name(self) -> str:
+                return config.model_name
+
+        self._evaluator = DeepSeekEvaluator()
+        return self._evaluator
+
+    def _create_gemini_evaluator(self, base_cls: type) -> Any:
+        """Create a Google Gemini-backed evaluator."""
+        import google.generativeai as genai
+
+        api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
+        if not api_key:
+            raise ValueError("Gemini evaluator requires GEMINI_API_KEY or GOOGLE_API_KEY")
+        genai.configure(api_key=api_key)
+        model_name = "gemini-2.0-flash"
+
+        class GeminiEvaluator(base_cls):
+            def __init__(self):
+                self._model = genai.GenerativeModel(
+                    model_name,
+                    generation_config=genai.types.GenerationConfig(temperature=0.0),
+                )
+                self.model_name = model_name
+
+            def load_model(self):
+                return self._model
+
+            def generate(self, prompt: str) -> str:
+                response = self._model.generate_content(prompt)
+                return response.text or ""
+
+            async def a_generate(self, prompt: str) -> str:
+                return self.generate(prompt)
+
+            def get_model_name(self) -> str:
+                return model_name
+
+        self._evaluator = GeminiEvaluator()
+        return self._evaluator
+
     def _get_evaluator(self) -> Any:
         """Get or create the DeepEval evaluator model."""
         if self._evaluator is not None:
@@ -119,38 +193,11 @@ class EvaluationService:
 
         try:
             from deepeval.models import DeepEvalBaseLLM
-            from openai import OpenAI
 
-            class DeepSeekEvaluator(DeepEvalBaseLLM):
-                def __init__(self, config: EvaluationConfig):
-                    self.config = config
-                    self._client = None
+            if self.config.evaluator == "gemini":
+                return self._create_gemini_evaluator(DeepEvalBaseLLM)
 
-                def load_model(self):
-                    if self._client is None:
-                        self._client = OpenAI(
-                            api_key=os.getenv("DEEPSEEK_API_KEY"),
-                            base_url=self.config.api_base_url
-                        )
-                    return self._client
-
-                def generate(self, prompt: str) -> str:
-                    client = self.load_model()
-                    response = client.chat.completions.create(
-                        model=self.config.model_name,
-                        messages=[{"role": "user", "content": prompt}],
-                        temperature=0.0
-                    )
-                    return response.choices[0].message.content or ""
-
-                async def a_generate(self, prompt: str) -> str:
-                    return self.generate(prompt)
-
-                def get_model_name(self) -> str:
-                    return self.config.model_name
-
-            self._evaluator = DeepSeekEvaluator(self.config)
-            return self._evaluator
+            return self._create_deepseek_evaluator(DeepEvalBaseLLM)
 
         except Exception as e:
             logger.error(f"Failed to initialize evaluator: {e}")

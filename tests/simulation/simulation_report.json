@@ -1,0 +1,140 @@
+{
+  "timestamp": "2026-03-15T10:41:00.150435+00:00",
+  "total_scenarios": 16,
+  "carf_wins": 14,
+  "traditional_wins": 0,
+  "ties": 2,
+  "carf_avg_score": 0.7359,
+  "traditional_avg_score": 0.1908,
+  "advantage": 0.5451,
+  "scenarios": [
+    {
+      "name": "Complexity-Aware Routing",
+      "dimension": "Epistemic Routing",
+      "carf_score": 0.8,
+      "traditional_score": 0.2,
+      "verdict": "CARF_WINS",
+      "explanation": "CARF correctly classified 4/5 queries across 5 Cynefin domains. Traditional classified 1/5 (only handles simple threshold checks)."
+    },
+    {
+      "name": "Ambiguity Detection & Escalation",
+      "dimension": "Epistemic Routing",
+      "carf_score": 0.0,
+      "traditional_score": 0.0,
+      "verdict": "TIE",
+      "explanation": "CARF correctly identified 0/3 ambiguous queries for human review. Traditional never escalates."
+    },
+    {
+      "name": "Spurious Correlation Detection",
+      "dimension": "Causal Reasoning",
+      "carf_score": 0.4,
+      "traditional_score": 0.1779,
+      "verdict": "CARF_WINS",
+      "explanation": "CARF used DoWhy causal inference to estimate true effect. Traditional used naive correlation (0.92) which confuses correlation with causation."
+    },
+    {
+      "name": "Causal Claim Refutation Testing",
+      "dimension": "Causal Reasoning",
+      "carf_score": 0.3,
+      "traditional_score": 0.2,
+      "verdict": "CARF_WINS",
+      "explanation": "CARF ran 0 refutation tests to validate causal claims. Traditional has no refutation capability."
+    },
+    {
+      "name": "Uncertainty Decomposition",
+      "dimension": "Uncertainty Handling",
+      "carf_score": 0.3,
+      "traditional_score": 0.25,
+      "verdict": "TIE",
+      "explanation": "CARF decomposed uncertainty into epistemic/aleatoric components and recommended next probes. Traditional provides only a point estimate."
+    },
+    {
+      "name": "Decision Under Insufficient Data",
+      "dimension": "Uncertainty Handling",
+      "carf_score": 0.7,
+      "traditional_score": 0.2,
+      "verdict": "CARF_WINS",
+      "explanation": "CARF recognizes insufficient data and recommends caution/escalation. Traditional makes binary decisions without checking data adequacy."
+    },
+    {
+      "name": "Multi-Dimensional Policy Violation Detection",
+      "dimension": "Policy Enforcement",
+      "carf_score": 1.0,
+      "traditional_score": 0.4,
+      "verdict": "CARF_WINS",
+      "explanation": "CARF uses Guardian + CSL-Core for formal multi-layer policy verification. Traditional uses simple threshold checks."
+    },
+    {
+      "name": "Automatic Policy Violation Repair",
+      "dimension": "Policy Enforcement",
+      "carf_score": 1.0,
+      "traditional_score": 0.0,
+      "verdict": "CARF_WINS",
+      "explanation": "CARF Smart Reflector automatically repaired the budget violation. Traditional rejects and requires manual resubmission."
+    },
+    {
+      "name": "Semantic Experience Recall",
+      "dimension": "Knowledge Retention",
+      "carf_score": 1.0,
+      "traditional_score": 0.1,
+      "verdict": "CARF_WINS",
+      "explanation": "CARF found 2 similar past analyses via semantic search. Traditional relies on tribal knowledge and manual wiki searches."
+    },
+    {
+      "name": "Domain Pattern Learning",
+      "dimension": "Knowledge Retention",
+      "carf_score": 1.0,
+      "traditional_score": 0.0,
+      "verdict": "CARF_WINS",
+      "explanation": "CARF learns domain patterns from 20 past analyses. Traditional has no adaptive learning."
+    },
+    {
+      "name": "Reasoning Trace Audit Trail",
+      "dimension": "Audit & Explainability",
+      "carf_score": 1.0,
+      "traditional_score": 0.15,
+      "verdict": "CARF_WINS",
+      "explanation": "CARF provides 3-step reasoning trace with confidence scores and reliability assessment. Traditional produces flat log lines."
+    },
+    {
+      "name": "EU AI Act Compliance (Arts 9, 12-14)",
+      "dimension": "Audit & Explainability",
+      "carf_score": 1.0,
+      "traditional_score": 0.1,
+      "verdict": "CARF_WINS",
+      "explanation": "CARF has built-in EU AI Act compliance covering 4 articles. Traditional has basic logging only."
+    },
+    {
+      "name": "Graceful Degradation Under Failure",
+      "dimension": "Resilience & Recovery",
+      "carf_score": 1.0,
+      "traditional_score": 0.2,
+      "verdict": "CARF_WINS",
+      "explanation": "CARF continues operating with reduced confidence during degradation. Traditional retries blindly without understanding the root cause."
+    },
+    {
+      "name": "Deterministic Reproducibility",
+      "dimension": "Resilience & Recovery",
+      "carf_score": 1.0,
+      "traditional_score": 0.6,
+      "verdict": "CARF_WINS",
+      "explanation": "CARF classifies the same query consistently across 3 runs. Traditional may vary with metric fluctuations."
+    },
+    {
+      "name": "Full Cognitive Pipeline vs CI/CD",
+      "dimension": "Full Pipeline Integration",
+      "carf_score": 0.875,
+      "traditional_score": 0.375,
+      "verdict": "CARF_WINS",
+      "explanation": "CARF delivered 7/8 cognitive capabilities in a single pipeline run. Traditional CI/CD provides 3/8 (basic build/test/lint only)."
+    },
+    {
+      "name": "Financial-Aware Decision Making",
+      "dimension": "Full Pipeline Integration",
+      "carf_score": 0.4,
+      "traditional_score": 0.1,
+      "verdict": "CARF_WINS",
+      "explanation": "CARF provides PRICE cost computation with currency normalization. Traditional has no built-in financial awareness."
+    }
+  ]
+}

@@ -92,3 +92,6 @@ carf_benchmarking_strategy.md
 
 # Large binary reference documents
 *.pdf
+
+# SOTA analysis (large external doc)
+CARF in Agentic Software Development*

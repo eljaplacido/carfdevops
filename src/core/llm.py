@@ -286,6 +286,10 @@ def get_llm_config() -> LLMConfig:
     env_key = config["env_key"]
     api_key = os.getenv(env_key) if env_key else None
 
+    # Google provider: also check GEMINI_API_KEY
+    if not api_key and provider == LLMProvider.GOOGLE:
+        api_key = os.getenv("GEMINI_API_KEY")
+
     if not api_key and provider != LLMProvider.OLLAMA:
         # Fallback to OPENAI_API_KEY for compatibility
         api_key = os.getenv("OPENAI_API_KEY")
