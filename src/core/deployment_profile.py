@@ -35,6 +35,13 @@ class DeploymentMode(str, Enum):
     PRODUCTION = "production"
 
 
+class InferenceMode(str, Enum):
+    """Bayesian inference mode (Phase 18E)."""
+    FULL = "full"
+    APPROXIMATE = "approximate"
+    CACHED = "cached"
+
+
 class ProfileConfig(BaseModel):
     """Resolved deployment profile with concrete settings."""
 
@@ -59,6 +66,20 @@ class ProfileConfig(BaseModel):
     # Observability
     structured_logging: bool = False
 
+    # Bayesian inference (Phase 18E)
+    inference_mode: InferenceMode = Field(
+        default=InferenceMode.FULL,
+        description="Bayesian inference: full (MCMC), approximate (analytical conjugate), cached (pre-computed)",
+    )
+    inference_cache_ttl_seconds: int = Field(
+        default=0,
+        description="Posterior cache TTL in seconds (0 = disable)",
+    )
+    inference_cache_max_entries: int = Field(
+        default=128,
+        description="Maximum cached posterior entries",
+    )
+
 
 # ---------------------------------------------------------------------------
 # Profile presets
@@ -73,6 +94,9 @@ _PROFILE_PRESETS: dict[DeploymentMode, dict[str, Any]] = {
         "auth_enabled": False,
         "rate_limiting_enabled": False,
         "structured_logging": False,
+        "inference_mode": InferenceMode.FULL,
+        "inference_cache_ttl_seconds": 0,
+        "inference_cache_max_entries": 128,
     },
     DeploymentMode.STAGING: {
         "cors_origins": ["*"],
@@ -83,6 +107,9 @@ _PROFILE_PRESETS: dict[DeploymentMode, dict[str, Any]] = {
         "firebase_auth_enabled": True,
         "rate_limiting_enabled": True,
         "structured_logging": True,
+        "inference_mode": InferenceMode.APPROXIMATE,
+        "inference_cache_ttl_seconds": 1800,
+        "inference_cache_max_entries": 128,
     },
     DeploymentMode.PRODUCTION: {
         "cors_origins": [],  # Must be set via CARF_CORS_ORIGINS
@@ -93,6 +120,9 @@ _PROFILE_PRESETS: dict[DeploymentMode, dict[str, Any]] = {
         "rate_limiting_enabled": True,
         "max_request_size_mb": 50,
         "structured_logging": True,
+        "inference_mode": InferenceMode.CACHED,
+        "inference_cache_ttl_seconds": 3600,
+        "inference_cache_max_entries": 256,
     },
 }
 
@@ -150,6 +180,31 @@ def resolve_profile(mode: DeploymentMode | None = None) -> ProfileConfig:
     gov_env = os.environ.get("GOVERNANCE_ENABLED", "").lower()
     if gov_env == "true":
         config.governance_enabled = True
+
+    # Phase 18E: Inference mode override
+    inference_env = os.environ.get("CARF_INFERENCE_MODE", "").strip().lower()
+    if inference_env:
+        try:
+            config.inference_mode = InferenceMode(inference_env)
+            logger.info(
+                "Inference mode overridden via env: %s", config.inference_mode.value
+            )
+        except ValueError:
+            logger.warning(
+                "Unknown CARF_INFERENCE_MODE '%s'; keeping preset %s",
+                inference_env,
+                config.inference_mode.value,
+            )
+
+    cache_ttl_env = os.environ.get("CARF_INFERENCE_CACHE_TTL", "").strip()
+    if cache_ttl_env:
+        try:
+            config.inference_cache_ttl_seconds = int(cache_ttl_env)
+        except ValueError:
+            logger.warning(
+                "Invalid CARF_INFERENCE_CACHE_TTL '%s'; keeping preset",
+                cache_ttl_env,
+            )
 
     return config
 

@@ -30,6 +30,8 @@ from src.core.llm import get_explorer_model
 from src.core.state import BayesianEvidence, ConfidenceLevel, EpistemicState
 from src.utils.resiliency import async_retry_with_backoff, retry_with_backoff
 from src.utils.cache import async_lru_cache
+from src.core.deployment_profile import get_profile, InferenceMode
+from src.utils.posterior_cache import get_posterior_cache
 
 logger = logging.getLogger("carf.bayesian")
 
@@ -279,13 +281,43 @@ Respond with a JSON object:
         self,
         config: BayesianInferenceConfig,
     ) -> BayesianInferenceResult:
-        """Run PyMC inference and summarize posterior."""
+        """Run PyMC inference and summarize posterior.
+
+        Phase 18E: Respects ``inference_mode`` from the deployment profile:
+            - ``cached``: Reuse previous MCMC results if available (TTL-bounded)
+            - ``approximate``: Use analytical conjugate priors (no MCMC)
+            - ``full``: Run full PyMC MCMC (default)
+        """
+        profile = get_profile()
+        config_dict = config.model_dump()
+
+        if profile.inference_mode == InferenceMode.CACHED:
+            cache = get_posterior_cache()
+            cached = cache.get(config_dict)
+            if cached is not None:
+                result = BayesianInferenceResult(
+                    posterior_mean=cached.posterior_mean,
+                    credible_interval_lower=cached.credible_interval[0],
+                    credible_interval_upper=cached.credible_interval[1],
+                    success_probability=cached.posterior_mean,
+                    confidence_level=ConfidenceLevel.HIGH,
+                    effect_size=0.0,
+                    epistemic_uncertainty=cached.epistemic_uncertainty,
+                    aleatoric_uncertainty=cached.aleatoric_uncertainty,
+                    inference_method="pymc_cached",
+                )
+                return result
+
         try:
             import pymc as pm  # type: ignore
         except ImportError as exc:
             raise RuntimeError("PyMC is required for Bayesian inference") from exc
 
         mode = config.mode()
+
+        if profile.inference_mode == InferenceMode.APPROXIMATE:
+            return self._run_approximate_inference(config, mode)
+
         if mode == "binomial":
             with pm.Model():
                 p = pm.Beta("p", alpha=1, beta=1)
@@ -311,6 +343,14 @@ Respond with a JSON object:
             result.epistemic_uncertainty = (sum((x - p_mean) ** 2 for x in p_samples) / max(len(p_samples) - 1, 1)) ** 0.5
             # Aleatoric: inherent Bernoulli variance mean(p*(1-p))
             result.aleatoric_uncertainty = sum(x * (1 - x) for x in p_samples) / len(p_samples)
+            # Phase 18E: Cache posterior for reuse
+            if profile.inference_cache_ttl_seconds > 0:
+                get_posterior_cache().put(
+                    config_dict, p_samples,
+                    result.epistemic_uncertainty, result.aleatoric_uncertainty,
+                    (result.credible_interval_lower, result.credible_interval_upper),
+                    result.posterior_mean,
+                )
             return result
 
         if mode == "normal":
@@ -346,9 +386,69 @@ Respond with a JSON object:
             result.epistemic_uncertainty = (sum((x - mu_mean) ** 2 for x in mu_samples) / max(len(mu_samples) - 1, 1)) ** 0.5
             # Aleatoric: estimated data noise (mean of sigma posterior)
             result.aleatoric_uncertainty = sum(sigma_samples) / len(sigma_samples)
+            # Phase 18E: Cache posterior for reuse
+            if profile.inference_cache_ttl_seconds > 0:
+                get_posterior_cache().put(
+                    config_dict, mu_samples,
+                    result.epistemic_uncertainty, result.aleatoric_uncertainty,
+                    (result.credible_interval_lower, result.credible_interval_upper),
+                    result.posterior_mean,
+                )
             return result
 
         raise ValueError("Inference config missing observations")
+
+    def _run_approximate_inference(
+        self,
+        config: BayesianInferenceConfig,
+        mode: str,
+    ) -> BayesianInferenceResult:
+        """Phase 18E: Analytical conjugate approximations (no MCMC).
+
+        Binomial: Beta(1+s, 1+n-s) conjugate posterior
+        Normal: Normal-Inverse-Gamma conjugate posterior
+        """
+        if mode == "binomial":
+            s = float(config.successes)
+            n = float(config.trials)
+            p_mean = (1 + s) / (2 + n)
+            p_var = ((1 + s) * (1 + n - s)) / ((2 + n) ** 2 * (3 + n))
+            p_std = p_var ** 0.5
+            ci = (max(0, p_mean - 1.96 * p_std), min(1, p_mean + 1.96 * p_std))
+            return BayesianInferenceResult(
+                posterior_mean=p_mean,
+                credible_interval_lower=ci[0],
+                credible_interval_upper=ci[1],
+                success_probability=p_mean,
+                confidence_level=ConfidenceLevel.MEDIUM,
+                effect_size=p_mean,
+                epistemic_uncertainty=p_std,
+                aleatoric_uncertainty=p_mean * (1 - p_mean),
+                inference_method="approximate_conjugate",
+            )
+
+        if mode == "normal":
+            observations = [float(v) for v in config.observations or []]
+            if not observations:
+                observations = [0.0]
+            n_obs = len(observations)
+            mu_0 = sum(observations) / n_obs
+            sigma_0 = max((sum((x - mu_0) ** 2 for x in observations) / max(n_obs - 1, 1)) ** 0.5, 1e-3)
+            ci = (mu_0 - 1.96 * sigma_0 / max(n_obs, 1) ** 0.5,
+                  mu_0 + 1.96 * sigma_0 / max(n_obs, 1) ** 0.5)
+            return BayesianInferenceResult(
+                posterior_mean=mu_0,
+                credible_interval_lower=ci[0],
+                credible_interval_upper=ci[1],
+                success_probability=0.5,
+                confidence_level=ConfidenceLevel.MEDIUM,
+                effect_size=mu_0,
+                epistemic_uncertainty=sigma_0 / max(n_obs ** 0.5, 1),
+                aleatoric_uncertainty=sigma_0,
+                inference_method="approximate_conjugate",
+            )
+
+        raise ValueError(f"Unknown inference mode for approximation: {mode}")
 
     def _calculate_entropy(self, probability: float) -> float:
         """Calculate Shannon entropy for a binary belief."""

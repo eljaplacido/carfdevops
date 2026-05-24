@@ -1,7 +1,9 @@
-# CARF Project Handoff Document
+# CARF DevOps Edition — Handoff Document
+
+> **Note:** This is the DevOps-focused branch of Project CARF (CYNEPIC Architecture). The core causal-Bayesian reasoning engines, Guardian policy layer, and React cockpit (rccaef-cockpit) are shared with upstream. This edition adds DevOps-specific simulation, evaluation configuration, deployment risk assessment, and documentation.
 
 ## Project Overview
-**CARF (Complex-Adaptive Reasoning Fabric)** is a Neuro-Symbolic-Causal Agentic System with epistemic awareness. It implements a "Two-Speed Cognitive Model" using Cynefin framework for decision routing.
+**CARF (Complex-Adaptive Reasoning Fabric)** is a Neuro-Symbolic-Causal Agentic System with epistemic awareness. It implements a "Two-Speed Cognitive Model" using Cynefin framework for decision routing. The DevOps edition applies this to software development and operations workflows — incident root cause analysis, deployment impact prediction, and policy-gated operations.
 
 ## Project Structure
 
@@ -14,7 +16,7 @@ projectcarf/
 │   │   ├── state.py         # EpistemicState, CynefinDomain models
 │   │   └── __init__.py
 │   ├── dashboard/
-│   │   └── app.py           # Streamlit dashboard UI
+│   │   └── app.py           # Streamlit dashboard UI (deprecated — use carf-cockpit/)
 │   ├── services/
 │   │   ├── __init__.py      # Service exports
 │   │   ├── bayesian.py      # Bayesian/Active Inference engine
@@ -61,9 +63,10 @@ projectcarf/
 
 ### 1. Start the FastAPI Backend
 ```bash
-cd C:\Users\35845\Desktop\DIGICISU\projectcarf
-.venv\Scripts\activate
-python -m uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload
+cd carfdevops
+python -m venv .venv
+source .venv/bin/activate  # Linux/macOS
+# Windows: .venv\Scripts\activate
 ```
 
 The API will be available at:
@@ -71,7 +74,7 @@ The API will be available at:
 - API docs: http://localhost:8000/docs
 - Query endpoint: POST http://localhost:8000/query
 
-### 2. Start the Streamlit Dashboard
+### 2. Start the Dashboard (Streamlit — deprecated, use React cockpit instead)
 ```bash
 cd C:\Users\35845\Desktop\DIGICISU\projectcarf
 .venv\Scripts\activate
@@ -124,20 +127,18 @@ Optional:
    - Center panel: Causal DAG, causal analysis results, Guardian policy checks
    - Right panel: Execution trace
 
-## Status (Updated 2026-02-04)
+## Status (Updated 2026-05-24)
 
 ### Tests
-- **437 tests passing** (3 skipped), 64% coverage
-- All unit tests, eval tests, and workflow tests operational
+- **1,130+ backend tests passing** (0 failures), 72% coverage
+- **240+ frontend tests passing** (all passing)
+- Phase 18 backported: drift detection, bias auditing, plateau detection, ChimeraOracle StateGraph integration, scalable inference
 
 ### Recent Improvements
-- Enhanced simulation service with 4 data generators and scenario realism assessment
-- Added TransparencyPanel for reliability, agents, EU AI Act compliance, and config
-- Added comprehensive walkthroughs (Quick Demo, Analyst, Executive, Contributor, Production)
-- Enhanced AI chat guidance for data onboarding and configuration
-- Created central WALKTHROUGH.md documentation
-- Fixed TypeScript lint errors and unused variable warnings
-- Added context-aware Guardian policies with Cynefin domain thresholds
+- Phase 18A-E: Full SRR hardening & operational intelligence backported from upstream
+- Monitoring infrastructure: 7 `/monitoring/*` endpoints, 3-tab MonitoringPanel
+- ChimeraOracle integrated into LangGraph StateGraph (closes AP-7)
+- Scalable Bayesian inference (full/approximate/cached modes)
 
 ### Docker Setup (Recommended)
 ```bash

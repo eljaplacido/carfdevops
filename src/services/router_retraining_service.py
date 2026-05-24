@@ -12,10 +12,27 @@ does not modify the running router directly.
 from __future__ import annotations
 
 import logging
-from collections import Counter
+from collections import Counter, deque
+from datetime import datetime, timezone
 from typing import Any
 
+from pydantic import BaseModel, Field
+
 logger = logging.getLogger("carf.router_retraining")
+
+
+class ConvergenceResult(BaseModel):
+    """Result of plateau/convergence detection in retraining (Phase 18C)."""
+
+    timestamp: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    accuracy_history_length: int = 0
+    current_accuracy: float = 0.0
+    previous_accuracy: float = 0.0
+    accuracy_delta: float = 0.0
+    epochs_since_improvement: int = 0
+    plateau_detected: bool = False
+    regression_detected: bool = False
+    recommendation: str = ""
 
 
 class RouterRetrainingService:
@@ -25,7 +42,15 @@ class RouterRetrainingService:
         get_training_data() — fetches all domain overrides from feedback store
         should_retrain(min_samples) — checks if there's enough data
         retrain_keyword_hints() — extracts frequent terms per corrected domain
+        record_accuracy() — Phase 18C: record retraining accuracy
+        check_convergence() — Phase 18C: plateau detection
+        get_convergence_status() — Phase 18C: convergence monitoring status
     """
+
+    def __init__(self) -> None:
+        self._convergence_epsilon: float = 0.005  # 0.5% improvement threshold
+        self._accuracy_history: deque[float] = deque(maxlen=20)
+        self._epoch_count: int = 0
 
     def get_training_data(self) -> list[dict[str, Any]]:
         """Fetch all domain override records from the feedback store."""
@@ -102,6 +127,93 @@ class RouterRetrainingService:
         )
 
         return hints
+
+    # ------------------------------------------------------------------
+    # Phase 18C: Plateau / Convergence Detection
+    # ------------------------------------------------------------------
+
+    def record_accuracy(self, accuracy: float, epoch: int | None = None) -> None:
+        """Record an accuracy measurement from a retraining epoch.
+
+        Args:
+            accuracy: The accuracy score (0-1).
+            epoch: Optional epoch number for reference.
+        """
+        self._accuracy_history.append(accuracy)
+        if epoch is not None:
+            self._epoch_count = max(self._epoch_count, epoch)
+        else:
+            self._epoch_count += 1
+        logger.info(
+            "Recorded retraining accuracy: %.4f (epoch %d, history: %d)",
+            accuracy,
+            self._epoch_count,
+            len(self._accuracy_history),
+        )
+
+    def check_convergence(self) -> ConvergenceResult:
+        """Check for plateau or regression in retraining accuracy.
+
+        Returns:
+            ConvergenceResult with plateau/regression detection.
+        """
+        result = ConvergenceResult(
+            accuracy_history_length=len(self._accuracy_history),
+        )
+
+        if len(self._accuracy_history) < 2:
+            result.recommendation = "Insufficient data for convergence check (need 2+ epochs)"
+            return result
+
+        history = list(self._accuracy_history)
+        result.current_accuracy = history[-1]
+        result.previous_accuracy = history[-2]
+        result.accuracy_delta = round(result.current_accuracy - result.previous_accuracy, 6)
+
+        # Regression: accuracy dropped significantly
+        if result.accuracy_delta < -self._convergence_epsilon:
+            result.regression_detected = True
+            result.recommendation = (
+                f"REGRESSION DETECTED: accuracy dropped by {abs(result.accuracy_delta):.2%}. "
+                f"Investigate training data or model configuration."
+            )
+
+        # Plateau: diminishing returns over recent epochs
+        recent = history[-min(4, len(history)):]
+        if len(recent) >= 3:
+            improvements = [recent[i + 1] - recent[i] for i in range(len(recent) - 1)]
+            all_below_epsilon = all(
+                delta < self._convergence_epsilon for delta in improvements
+            )
+            if all_below_epsilon:
+                result.plateau_detected = True
+                result.epochs_since_improvement = len(
+                    [d for d in improvements if d < self._convergence_epsilon]
+                )
+                result.recommendation = (
+                    f"PLATEAU DETECTED: {result.epochs_since_improvement} epochs with "
+                    f"<{self._convergence_epsilon:.2%} improvement. "
+                    f"Consider early stopping or increasing data diversity."
+                )
+
+        if not result.plateau_detected and not result.regression_detected:
+            result.recommendation = (
+                f"Training progressing: {result.accuracy_delta:+.4f} delta. "
+                f"Continue retraining."
+            )
+
+        return result
+
+    def get_convergence_status(self) -> dict[str, Any]:
+        """Get convergence monitoring status."""
+        result = self.check_convergence()
+        return {
+            "convergence": result.model_dump(),
+            "history": list(self._accuracy_history),
+            "config": {
+                "epsilon": self._convergence_epsilon,
+            },
+        }
 
 
 # Singleton

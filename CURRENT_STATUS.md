@@ -1,22 +1,21 @@
 # CYNEPIC Architecture 0.5 - Current Status
 
-**Last Updated**: 2026-03-14
-**Phase**: Phase 17 — Causal World Model, NeSy Engine, Auth & Cloud Deployment
-**Overall Status**: Phase 17 Complete — World model + counterfactual + neurosymbolic engines, Firebase auth, Cloud SQL, H-Neuron hallucination sentinel, 60+ new tests
+**Last Updated**: 2026-05-24
+**Phase**: Phase 18 — Supervised Recursive Refinement, Scaling Hardening & Operational Intelligence
+**Overall Status**: Phase 18A-E Backported from upstream CARF — Drift detection, bias auditing, plateau detection, ChimeraOracle StateGraph integration, Scalable Inference Strategy. 4 RSI gaps closed. 4 new benchmarks (H40-H43). MonitoringPanel in Developer + Governance views.
 
 ---
 
 ## Test Coverage
 
 ```
-Total Tests: 980+ backend + 235 frontend = 1,215+ passing
+Total Tests: 1,130+ backend + 240+ frontend = 1,370+ passing
 Overall Coverage: 72%+
-Python Lines: 10,000+ lines
-React Components: 56 components (+AuthGuard, LoginPage, + Phase 17 types)
-Backend Unit Tests: 55+ test files (2 new Phase 17 test files with 60+ tests)
-Frontend Tests: 235 tests (22 test files, all passing)
-E2E Tests: 20 tests (Data Quality: 6/6 pass, API: varies by network)
-Benchmark Scripts: 9 technical + 1 e2e + 1 baseline + 1 report generator (12 hypotheses)
+Python Lines: 12,000+ lines
+React Components: 57 components (+MonitoringPanel)
+Backend Unit Tests: 58+ test files (Phase 18: test_phase18_improvements, test_monitoring_api, test_phase18e_inference, test_monitoring_hypotheses_wiring)
+Frontend Tests: 240+ tests (all passing)
+Benchmark Scripts: 13 technical + 1 e2e + 1 baseline + 1 report generator (43 hypotheses now)
 TLA+ Specs: 2 (StateGraph, EscalationProtocol)
 ```
 
@@ -33,7 +32,7 @@ TLA+ Specs: 2 (StateGraph, EscalationProtocol)
 | Bayesian Engine | Complete | 30% | PyMC integration, LLM fallback |
 | Guardian Layer | Complete | 63% | OPA + policy enforcement |
 | Human Layer | Complete | 28% | HumanLayer SDK integration |
-| **ChimeraOracle** | **NEW** | 89% | Fast CausalForestDML predictions |
+| **ChimeraOracle** | **ENHANCED (P18)** | 89% | Fast CausalForestDML predictions, now integrated into StateGraph |
 | **Governance Service** | **NEW** | 96% | MAP-PRICE-RESOLVE orchestrator |
 | **Federated Policy Service** | **NEW** | 95% | Domain-owner policy management, conflict detection |
 | **Cost Intelligence Service** | **NEW** | 96% | LLM token pricing, ROI, cost breakdown |
@@ -45,6 +44,13 @@ TLA+ Specs: 2 (StateGraph, EscalationProtocol)
 | **H-Neuron Sentinel** | **NEW (P17)** | — | Hallucination detection via weighted signal fusion (proxy mode) |
 | **Cloud SQL Database** | **NEW (P17)** | — | SQLite/PostgreSQL factory, Cloud Run ADC support |
 | **Firebase Auth** | **NEW (P17)** | — | JWT middleware, lazy Firebase Admin SDK init |
+| **Drift Detector** | **NEW (P18)** | — | KL-divergence monitoring, rolling windows, alert thresholds |
+| **Bias Auditor** | **NEW (P18)** | — | Chi-squared tests, quality disparity, verdict disparity |
+| **Plateau Detection** | **NEW (P18)** | — | Convergence monitoring, regression alerts, early stopping |
+| **ChimeraOracle Fast-Path** | **NEW (P18)** | — | StateGraph integration, Guardian enforcement, fallback |
+| **Scalable Inference** | **NEW (P18)** | — | Full/Approximate/Cached Bayesian modes, posterior cache |
+| **Monitoring API** | **NEW (P18)** | — | 7 endpoints under `/monitoring/*` |
+| **Posterior Cache** | **NEW (P18)** | — | SHA256-keyed, TTL-bounded, LRU-evicted posterior cache |
 
 ### React Frontend (carf-cockpit)
 
@@ -78,6 +84,7 @@ TLA+ Specs: 2 (StateGraph, EscalationProtocol)
 | **AnalysisHistoryPanel** | **ENHANCED** | OOM crash fix, capped at 50, lazy-load, cloud-backed history |
 | **AuthGuard** | **NEW (P17)** | Firebase auth gatekeeper, skips in local dev |
 | **LoginPage** | **NEW (P17)** | Google sign-in UI with branded gradient |
+| **MonitoringPanel** | **NEW (P18)** | 3-tab panel: Drift Monitor, Bias Audit, Convergence — integrated into Developer + Governance views |
 | InsightsPanel | Complete | Action items, effort badges, roadmap stepper |
 | **GovernanceView** | **NEW** | 4-tab layout: Spec Map, Cost, Policy, Compliance |
 | **SpecMapTab** | **NEW** | ReactFlow domain node visualization |
@@ -132,6 +139,46 @@ TLA+ Specs: 2 (StateGraph, EscalationProtocol)
 ---
 
 ## Recent Improvements
+
+### Phase 18: SRR Hardening & Operational Intelligence (2026-05-24 — backported from upstream CARF)
+
+Closes all 4 RSI safety gaps identified by architecture review. Implements operational monitoring across all platform views.
+
+**Drift Detection (18A):**
+1. **DriftDetector** (`src/services/drift_detector.py`) — KL-divergence monitoring of routing distribution over rolling windows. Baseline established from first 100 observations. Alerts on distributional shift > configurable threshold. Bounded deque for snapshot history.
+2. Wired into `run_carf()` pipeline — every query records routing decision automatically.
+
+**Bias Auditing (18B):**
+3. **BiasAuditor** (`src/services/bias_auditor.py`) — Chi-squared test on domain representation, quality score disparity analysis, Guardian verdict approval rate disparity. Three-dimensional fairness audit of accumulated agent memory.
+
+**Plateau Detection (18C):**
+4. **RouterRetrainingService.check_convergence()** — Detects convergence plateau (<0.5% improvement over 3+ epochs), regression (accuracy drop), and productive improvement. Records accuracy history with timestamps.
+
+**ChimeraOracle StateGraph Integration (18D):**
+5. **chimera_fast_path_node** (`src/workflows/graph.py`) — Conditional fast-path in LangGraph StateGraph. Routes Complicated queries with high confidence to ChimeraOracle, with Guardian enforcement on output. Falls back to full causal_analyst on low reliability or drift warning. Closes AP-7 and AP-10.
+
+**Scalable Inference (18E):**
+6. **PosteriorCache** (`src/utils/posterior_cache.py`) — SHA256-keyed, TTL-bounded, LRU-evicted cache for posterior distributions. Environment-aware deployment profile settings.
+7. **InferenceMode enum** (`src/core/deployment_profile.py`) — Full (MCMC), Approximate (analytical conjugate), Cached modes with env override.
+8. **Analytical approximations** in BayesianEngine — Beta-Binomial and Normal conjugate posteriors for approximate mode.
+
+**Monitoring API (18F):**
+9. **Monitoring Router** (`src/api/routers/monitoring.py`) — 7 endpoints under `/monitoring/*` for drift, bias, convergence, posterior cache, and unified status. Registered in main.py.
+
+**Frontend Integration (18G):**
+10. **MonitoringPanel** (`carf-cockpit/src/components/carf/MonitoringPanel.tsx`) — 3-tab component (Drift, Bias, Convergence) with Recharts visualizations.
+11. TypeScript types — DriftStatus, BiasReport, ConvergenceStatus, MonitoringStatus interfaces.
+12. API service — 6 monitoring API functions with retry and auth.
+
+**Benchmarks (18H):**
+13. H40 — Drift detection sensitivity/specificity (5 realistic enterprise scenarios)
+14. H41 — Bias audit accuracy (5 memory corpus scenarios)
+15. H42 — Plateau detection (5 training curve scenarios)
+16. H43 — ChimeraOracle fast-path Guardian enforcement validation
+
+**Testing:**
+17. 50+ new backend tests across test_phase18_improvements.py, test_monitoring_api.py, test_phase18e_inference.py, test_monitoring_hypotheses_wiring.py.
+18. 8+ new frontend tests for MonitoringPanel.
 
 ### Phase 17: Causal World Model, NeSy Engine, Auth & Cloud Deployment (2026-03-14)
 
